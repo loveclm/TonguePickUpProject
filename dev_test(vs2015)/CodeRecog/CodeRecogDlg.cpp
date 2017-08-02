@@ -72,9 +72,7 @@ BEGIN_MESSAGE_MAP(CTongueDetectionDlg, CDialogEx)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
-	ON_BN_CLICKED(IDC_BUTTON1, &CTongueDetectionDlg::OnBnClickedProcImage)
 	ON_BN_CLICKED(IDC_BTNPROCIMAGE2, &CTongueDetectionDlg::OnDetectTongueUpdatedAlgorithm)
-	ON_BN_CLICKED(IDC_BTNTONGUEANDLIPS, &CTongueDetectionDlg::OnBnClickedBtnTongueAndLips)
 END_MESSAGE_MAP()
 
 
@@ -228,16 +226,15 @@ void tongueDetectionAlgorithm(const char* filePath) {
 
 	resize(matVPolor, matVPolor, Size((int)dRadius / 2, matVPolor.rows));
 
-	Mat matVDiff;
 	// calculate differentiation image
+	Mat matVDiff;
 	differentiate(matVPolor, matVDiff, 2, 2);
 
-	Mat matElem = getStructuringElement(MORPH_ELLIPSE, Size(3, 3), Point(1, 1));
 	// erode image to remove unnecessary connections of contours
+	Mat matElem = getStructuringElement(MORPH_ELLIPSE, Size(3, 3), Point(1, 1));
 	erode(matVDiff, matVDiff, matElem);
 
 	Mat matVDiffResv = matVDiff.clone();
-
 	cvtColor(matVPolor, matVPolor, CV_GRAY2BGR);
 
 	Mat matProcVPolor = Mat::zeros(Size(matVPolor.cols, matVPolor.rows), CV_8UC1);
@@ -249,9 +246,7 @@ void tongueDetectionAlgorithm(const char* filePath) {
 	for (int i = 0; i < g_contours1.size(); i++) {
 		Rect rt = boundingRect(g_contours1[i]);
 		if (rt.height > matVDiff.rows / 8) {
-
 			approxPolyDP(g_contours1[i], g_tempContour1, 4, true);
-
 			g_tempContour2.clear();
 			for (int j = 0; j < g_tempContour1.size() - 1; j++) {
 				int id1 = (j == 0) ? g_tempContour1.size() - 1 : j - 1;
@@ -263,9 +258,7 @@ void tongueDetectionAlgorithm(const char* filePath) {
 
 				g_tempContour2.push_back(Point(x, y));
 			}
-
 			polylines(matVPolor, g_tempContour1, true, Scalar(0, 0, 255));
-
 			g_contours2.push_back(g_tempContour2);
 		}
 	}
@@ -366,9 +359,7 @@ void tongueDetectionAlgorithm(const char* filePath) {
 	}
 
 	//imshow("VDiff", matVDiff);
-
 	//imshow("ProcPolor", matProcVPolor);
-
 	imshow("Result", matFinal);
 
 	waitKey();
@@ -426,31 +417,12 @@ void tongueDetectionAlgorithmUpgrade(const char* filePath) {
 		if (rt.height > matSimplifiedPolor.rows / 16) {
 
 			approxPolyDP(g_contours1[i], g_tempContour1, 4, true);
-
-			//polylines(matVPolor, g_contours1[i], true, Scalar(0, 0, 255));
 			polylines(matVPolor, g_tempContour1, true, Scalar(0, 0, 255));
 
-			//g_contours2.push_back(g_contours1[i]);
 			g_contours2.push_back(g_tempContour1);
 			g_boundingRects.push_back(rt);
 		}
 	}
-
-	/*for (int i = g_contours2.size() - 1; i >= 0; i--) {
-		int del = 0;
-		for (int k = 0; k < g_contours2.size(); k++) {
-			if (i == k) continue;
-			if (g_boundingRects[i].y > g_boundingRects[k].y && g_boundingRects[i].br().y < g_boundingRects[k].br().y) {
-				del = 1;
-				break;
-			}
-		}
-		if (del) {
-			g_contours2.erase(g_contours2.begin() + i);
-			g_boundingRects.erase(g_boundingRects.begin() + i);
-		}
-	}*/
-
 
 	int maxId = -1;
 	int maxH = 0;
@@ -462,17 +434,10 @@ void tongueDetectionAlgorithmUpgrade(const char* filePath) {
 		}
 	}
 
-	//if (maxH < matSimplifiedPolor.rows * 8 / 10) {
-		for (int i = 0; i < g_contours2.size(); i++) {
-			fillPoly(matSimplifiedPolor, g_contours2, Scalar(255));
-		}
-	//}
-	/*else {
-		g_contours3.clear();
-		g_contours3.push_back(g_contours2[maxId]);
-		fillPoly(matSimplifiedPolor, g_contours3, Scalar(255));
-	}*/
-
+	for (int i = 0; i < g_contours2.size(); i++) {
+		fillPoly(matSimplifiedPolor, g_contours2, Scalar(255));
+	}
+	
 	dilate(matSimplifiedPolor, matSimplifiedPolor, matElem);
 
 	int* marks = new int[matSimplifiedPolor.rows];
@@ -486,9 +451,7 @@ void tongueDetectionAlgorithmUpgrade(const char* filePath) {
 	for (int i = 0; i < 60; i++) {
 		int rowTemp = i * iScanStepY;
 		int lpos = -1;
-		//vector<int> openList;
 		for (int j = iScanStartX; j < iScanEndX; j++) {
-			//if (matSimplifiedPolor.at<BYTE>(rowTemp, j) == 255 && matSimplifiedPolor.at<BYTE>(rowTemp, j - 1) == 0) {
 			if (matSimplifiedPolor.at<BYTE>(rowTemp, j) == 255) {
 				lpos = j;
 				break;
@@ -535,8 +498,6 @@ void tongueDetectionAlgorithmUpgrade(const char* filePath) {
 	ptLast = Point(ptMarksSmooth.front().x, matSimplifiedPolor.rows + ptMarksSmooth.front().y);
 	line(matPolorEdgeSmooth, ptMarksSmooth.back(), ptLast, Scalar(255), 3);
 
-	//imshow("PolorEdge", matPolorEdgeSmooth);
-
 	int density = 1;
 
 	for (int i = 0; i < matPolorEdgeSmooth.rows; i++) {
@@ -548,7 +509,6 @@ void tongueDetectionAlgorithmUpgrade(const char* filePath) {
 			}
 		}
 	}
-	
 
 	g_contours3.clear();
 	g_tempContour2.clear();
@@ -565,7 +525,6 @@ void tongueDetectionAlgorithmUpgrade(const char* filePath) {
 			g_tempContour2.push_back(Point(x, y));
 		}
 	}
-
 
 	delete[] marks;
 
@@ -605,74 +564,11 @@ void tongueDetectionAlgorithmUpgrade(const char* filePath) {
 		}
 	}
 
-	imshow("VPolor", matVPolorDiff);
-	//imshow("Polor", matSimplifiedPolor);
-
+	//imshow("VPolor", matVPolorDiff);
 	imshow("res", res);
 
 	waitKey();
 }
-
-
-/**
-* @brief Process image to detect tongue and lips
-
-* Process image to detect tongue and lips
-
-* @param filePath Path of image file to be processed
-* @return void
-* @author Pai Jin
-* @date 2017/7/25 (demo version in development)
-*/
-void tongueAndLipsDetectionAlgorithm(const char* filePath) {
-
-	Mat matHueRange, matHSV, matResult;
-	Mat matOrigin = imread(filePath);
-	resize(matOrigin, matOrigin, Size(matOrigin.cols / 2, matOrigin.rows / 2));
-	imshow("origin", matOrigin);
-
-	// convert image from RGB mode to HSV mode
-	cvtColor(matOrigin, matHSV, CV_BGR2HSV);
-
-	// select area which is the color of tongue and lips
-	inRange(matHSV, Scalar(160, 100, 50), Scalar(178, 255, 255), matHueRange);
-
-	// blur image
-	GaussianBlur(matHueRange, matHueRange, Size(81, 81), 0);
-
-	// apply threshold
-	threshold(matHueRange, matHueRange, 120, 255, THRESH_BINARY);
-
-	// apply mask
-	matOrigin.copyTo(matResult, matHueRange);
-
-	imshow("result", matResult);
-
-	waitKey(0);
-}
-
-
-/**
-* @button click function
-
-* Process button clicking
-
-* @return void
-* @author Pai Jin
-* @date 2017/7/17 (demo version for testing algorithm)
-*/
-void CTongueDetectionDlg::OnBnClickedProcImage()
-{
-	// create file open dialog
-	CFileDialog dlg(1);
-	if (dlg.DoModal() == IDOK) {
-		// get selected file path
-		CString filePath = dlg.GetPathName();
-		// process image with algorithm1
-		tongueDetectionAlgorithm((LPCTSTR)filePath);
-	}
-}
-
 
 /**
 * @button click function
@@ -692,26 +588,5 @@ void CTongueDetectionDlg::OnDetectTongueUpdatedAlgorithm()
 		CString filePath = dlg.GetPathName();
 		// process image
 		tongueDetectionAlgorithmUpgrade((LPCTSTR)filePath);
-	}
-}
-
-
-/**
-* @button click function
-
-* Process button clicking - Detect Tongue and Lips
-
-* @return void
-* @author Pai Jin
-* @date 2017/7/19 (demo version for testing algorithm)
-*/
-void CTongueDetectionDlg::OnBnClickedBtnTongueAndLips()
-{
-	CFileDialog dlg(1);
-	if (dlg.DoModal() == IDOK) {
-		// get selected file path
-		CString filePath = dlg.GetPathName();
-		// process image
-		tongueAndLipsDetectionAlgorithm((LPCTSTR)filePath);
 	}
 }

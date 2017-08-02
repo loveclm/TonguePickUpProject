@@ -247,115 +247,88 @@ void tongueDetectionAlgorithm(const char* filePath) {
 * @param filePath the path of image file to be processed
 * @return void
 * @author Pai Jin
-* @date 2017/7/20 (demo version for testing algorithm)
+* @date 2017/8/2 (demo version for testing algorithm)
 */
 void tongueDetectionAlgorithmUpgrade(const char* filePath) {
-	int i = 0;
-	int j = 0;
+	// read image from file to opencv mat
 	Mat matOrg = imread(filePath);
 	Mat matResizedOrg;
+	// resize image
 	resize(matOrg, matResizedOrg, Size(matOrg.cols / 2, matOrg.rows / 2));
+	imshow("V", matResizedOrg);
+
+	// gaussian blur to remove noises
 	GaussianBlur(matResizedOrg, matResizedOrg, Size(5, 5), 1);
 
+	// convert image from RGB mode to HSV mode
 	Mat matOrgHSV;
 	cvtColor(matResizedOrg, matOrgHSV, CV_BGR2HSV);
 
+	// split image into channels to get Value channel
 	split(matOrgHSV, g_tempChannels);
 
-	imshow("V", matResizedOrg);
-
-	Mat matVPolor;
+	// transform image from vertical coordinate system into polar coordinate system
+	Mat matVPolar;
 	Point2f center = Point2f(matResizedOrg.cols / 2, matResizedOrg.rows / 2);
 	double radius = (matResizedOrg.cols > matResizedOrg.rows) ? matResizedOrg.cols / 2 : matResizedOrg.rows / 2;
-	linearPolar(g_tempChannels[2], matVPolor, center, radius, INTER_LINEAR + WARP_FILL_OUTLIERS);
+	linearPolar(g_tempChannels[2], matVPolar, center, radius, INTER_LINEAR + WARP_FILL_OUTLIERS);
 
-	resize(matVPolor, matVPolor, Size((int)radius / 2, matVPolor.rows));
+	resize(matVPolar, matVPolar, Size((int)radius / 2, matVPolar.rows));
 
-	Mat matVPolorDiff;
-	differentiate(matVPolor, matVPolorDiff, 2, 4);
+	// differentiate transformed image horizontally
+	Mat matVPolarDiff;
+	differentiate(matVPolar, matVPolarDiff, 2, 4);
 
+	// remove noises
 	Mat matElem = getStructuringElement(MORPH_ELLIPSE, Size(3, 3), Point(1, 1)); // erode amount: 2
-	erode(matVPolorDiff, matVPolorDiff, matElem);
+	erode(matVPolarDiff, matVPolarDiff, matElem);
 
-	Mat matVPolorDiffResv = matVPolorDiff.clone();
+	Mat matVPolarDiffResv = matVPolarDiff.clone();
 
-	cvtColor(matVPolor, matVPolor, CV_GRAY2BGR);
+	cvtColor(matVPolar, matVPolar, CV_GRAY2BGR);
 
-	Mat matSimplifiedPolor = Mat::zeros(Size(matVPolor.cols, matVPolor.rows), CV_8UC1);
+	// simplify image in polar coordinate system
+	Mat matSimplifiedPolar = Mat::zeros(Size(matVPolar.cols, matVPolar.rows), CV_8UC1);
 
-	findContours(matVPolorDiffResv, g_contours1, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
+	// find all contours
+	findContours(matVPolarDiffResv, g_contours1, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
 
+	// choose contours the height of which is greater than one 16th of the height of the image
 	g_contours2.clear();
 	g_boundingRects.clear();
-	for (i = 0; i < g_contours1.size(); i++) {
+	for (int i = 0; i < g_contours1.size(); i++) {
 		Rect rt = boundingRect(g_contours1[i]);
-		if (rt.height > matSimplifiedPolor.rows / 16) {
+		if (rt.height > matSimplifiedPolar.rows / 16) {
 
 			approxPolyDP(g_contours1[i], g_tempContour1, 4, true);
+			polylines(matVPolar, g_tempContour1, true, Scalar(0, 0, 255));
 
-			//polylines(matVPolor, g_contours1[i], true, Scalar(0, 0, 255));
-			polylines(matVPolor, g_tempContour1, true, Scalar(0, 0, 255));
-
-			//g_contours2.push_back(g_contours1[i]);
 			g_contours2.push_back(g_tempContour1);
 			g_boundingRects.push_back(rt);
 		}
 	}
 
-	/*for (int i = g_contours2.size() - 1; i >= 0; i--) {
-		int del = 0;
-		for (int k = 0; k < g_contours2.size(); k++) {
-			if (i == k) continue;
-			if (g_boundingRects[i].y > g_boundingRects[k].y && g_boundingRects[i].br().y < g_boundingRects[k].br().y) {
-				del = 1;
-				break;
-			}
-		}
-		if (del) {
-			g_contours2.erase(g_contours2.begin() + i);
-			g_boundingRects.erase(g_boundingRects.begin() + i);
-		}
-	}*/
-
-
-	int maxId = -1;
-	int maxH = 0;
-	for (i = 0; i < g_contours2.size(); i++) {
-		Rect rti = g_boundingRects[i];
-		if (rti.height > maxH) {
-			maxH = rti.height;
-			maxId = i;
-		}
+	// generate new black-white image of polar coordinate system
+	for (int i = 0; i < g_contours2.size(); i++) {
+		fillPoly(matSimplifiedPolar, g_contours2, Scalar(255));
 	}
+	
+	dilate(matSimplifiedPolar, matSimplifiedPolar, matElem);
 
-	//if (maxH < matSimplifiedPolor.rows * 8 / 10) {
-		for (int i = 0; i < g_contours2.size(); i++) {
-			fillPoly(matSimplifiedPolor, g_contours2, Scalar(255));
-		}
-	//}
-	/*else {
-		g_contours3.clear();
-		g_contours3.push_back(g_contours2[maxId]);
-		fillPoly(matSimplifiedPolor, g_contours3, Scalar(255));
-	}*/
-
-	dilate(matSimplifiedPolor, matSimplifiedPolor, matElem);
-
-	int* marks = new int[matSimplifiedPolor.rows];
+	// guess the edge of tongue from the differentiated and simplified image in polar coordinate system
+	int* marks = new int[matSimplifiedPolar.rows];
 
 	vector<Point> ptMarks;
-	int iScanStepY = matSimplifiedPolor.rows / 60;
-	int iScanStartX = matSimplifiedPolor.cols / 2;
-	int iScanEndX = matSimplifiedPolor.cols * 7 / 8;
+	int iScanStepY = matSimplifiedPolar.rows / 60;
+	int iScanStartX = matSimplifiedPolar.cols / 2;
+	int iScanEndX = matSimplifiedPolar.cols * 7 / 8;
 	int bFirst = 1;
-	int lastX = matSimplifiedPolor.cols * 3 / 4;
-	for (i = 0; i < 60; i++) {
+	int lastX = matSimplifiedPolar.cols * 3 / 4;
+	for (int i = 0; i < 60; i++) {
 		int rowTemp = i * iScanStepY;
 		int lpos = -1;
-		//vector<int> openList;
-		for (j = iScanStartX; j < iScanEndX; j++) {
-			//if (matSimplifiedPolor.at<uchar>(rowTemp, j) == 255 && matSimplifiedPolor.at<uchar>(rowTemp, j - 1) == 0) {
-			if (matSimplifiedPolor.at<uchar>(rowTemp, j) == 255) {
+		for (int j = iScanStartX; j < iScanEndX; j++) {
+			if (matSimplifiedPolar.at<BYTE>(rowTemp, j) == 255) {
 				lpos = j;
 				break;
 			}
@@ -366,8 +339,8 @@ void tongueDetectionAlgorithmUpgrade(const char* filePath) {
 			
 			if (bFirst) {
 				bFirst = 0;
-				iScanStartX = matSimplifiedPolor.cols / 4;
-				iScanEndX = matSimplifiedPolor.cols * 7 / 8;
+				iScanStartX = matSimplifiedPolar.cols / 4;
+				iScanEndX = matSimplifiedPolar.cols * 7 / 8;
 			}
 			lastX = lpos;
 			ptMarks.push_back(Point(lpos, rowTemp));
@@ -375,16 +348,16 @@ void tongueDetectionAlgorithmUpgrade(const char* filePath) {
 		
 	}
 
-	cvtColor(matSimplifiedPolor, matSimplifiedPolor, CV_GRAY2RGB);
+	cvtColor(matSimplifiedPolar, matSimplifiedPolar, CV_GRAY2RGB);
 	
 	bFirst = 1;
 	vector<Point> ptMarksSmooth;
 	if (ptMarks.size() > 3) {
 		ptMarksSmooth.push_back(ptMarks.front());
-		for (i = 1; i < ptMarks.size() - 1; i++) {
+		for (int i = 1; i < ptMarks.size() - 1; i++) {
 			int x = (ptMarks[i - 1].x + ptMarks[i].x + ptMarks[i + 1].x) / 3;
 			ptMarksSmooth.push_back(Point(x, ptMarks[i].y));
-			line(matSimplifiedPolor, ptMarksSmooth[i-1], ptMarksSmooth[i], Scalar(0, 0, 255));
+			line(matSimplifiedPolar, ptMarksSmooth[i-1], ptMarksSmooth[i], Scalar(0, 0, 255));
 		}
 		ptMarksSmooth.push_back(ptMarks.back());
 	}
@@ -392,37 +365,35 @@ void tongueDetectionAlgorithmUpgrade(const char* filePath) {
 		return;
 	}
 
-	Mat matPolorEdgeSmooth = Mat::zeros(matSimplifiedPolor.rows, matSimplifiedPolor.cols, CV_8UC1);
-	Point ptLast = Point(ptMarksSmooth.back().x, ptMarksSmooth.back().y - matSimplifiedPolor.rows);
-	line(matPolorEdgeSmooth, ptLast, ptMarksSmooth[0], Scalar(255), 3);
-	for (i = 0; i < ptMarksSmooth.size() - 1; i++) {
-		line(matPolorEdgeSmooth, ptMarksSmooth[i], ptMarksSmooth[i + 1], Scalar(255), 3);
+	Mat matPolarEdgeSmooth = Mat::zeros(matSimplifiedPolar.rows, matSimplifiedPolar.cols, CV_8UC1);
+	Point ptLast = Point(ptMarksSmooth.back().x, ptMarksSmooth.back().y - matSimplifiedPolar.rows);
+	line(matPolarEdgeSmooth, ptLast, ptMarksSmooth[0], Scalar(255), 3);
+	for (int i = 0; i < ptMarksSmooth.size() - 1; i++) {
+		line(matPolarEdgeSmooth, ptMarksSmooth[i], ptMarksSmooth[i + 1], Scalar(255), 3);
 	}
-	ptLast = Point(ptMarksSmooth.front().x, matSimplifiedPolor.rows + ptMarksSmooth.front().y);
-	line(matPolorEdgeSmooth, ptMarksSmooth.back(), ptLast, Scalar(255), 3);
-
-	//imshow("PolorEdge", matPolorEdgeSmooth);
+	ptLast = Point(ptMarksSmooth.front().x, matSimplifiedPolar.rows + ptMarksSmooth.front().y);
+	line(matPolarEdgeSmooth, ptMarksSmooth.back(), ptLast, Scalar(255), 3);
 
 	int density = 1;
 
-	for (i = 0; i < matPolorEdgeSmooth.rows; i++) {
+	for (int i = 0; i < matPolarEdgeSmooth.rows; i++) {
 		marks[i] = -1;
-		for (j = 0; j < matPolorEdgeSmooth.cols; j++) {
-			if (matPolorEdgeSmooth.at<uchar>(i, j) == 255) {
+		for (int j = 0; j < matPolarEdgeSmooth.cols; j++) {
+			if (matPolarEdgeSmooth.at<BYTE>(i, j) == 255) {
 				marks[i] = j + 5;
 				break;
 			}
 		}
 	}
-	
 
+	// generate polyline in original coordinate system from the detected edge in polar coordinate system
 	g_contours3.clear();
 	g_tempContour2.clear();
-	double m = 2 * 3.141592 / matSimplifiedPolor.rows;
-	for (int i = 0; i < matSimplifiedPolor.rows; i++) {
+	double m = 2 * 3.141592 / matSimplifiedPolar.rows;
+	for (int i = 0; i < matSimplifiedPolar.rows; i++) {
 		if (marks[i] >= 0) {
 			double angle = m*i;
-			double r = radius * marks[i] / matSimplifiedPolor.cols;
+			double r = radius * marks[i] / matSimplifiedPolar.cols;
 			int x = matResizedOrg.cols / 2 + (int)(cos(angle)*r);
 			int y = matResizedOrg.rows / 2 + (int)(sin(angle)*r);
 			if (i == 108) {
@@ -432,9 +403,9 @@ void tongueDetectionAlgorithmUpgrade(const char* filePath) {
 		}
 	}
 
-
 	delete[] marks;
 
+	// smooth the polyline
 	g_tempContour3.clear();
 	int smooth = 5;
 	for (int i = 0; i < g_tempContour2.size(); i++) {
@@ -455,11 +426,13 @@ void tongueDetectionAlgorithmUpgrade(const char* filePath) {
 
 	g_contours3.push_back(g_tempContour3);
 
+	// create mask image with black and white
 	Mat mask = Mat::zeros(matResizedOrg.rows, matResizedOrg.cols, CV_8UC1);
 	fillPoly(mask, g_contours3, Scalar(255));
 
 	GaussianBlur(mask, mask, Size(9, 9), 0);
 
+	// get final image applied mask
 	Mat res = matResizedOrg;
 	for (int i = 0; i < matResizedOrg.rows; i++) {
 		for (int j = 0; j < matResizedOrg.cols; j++) {
@@ -471,11 +444,9 @@ void tongueDetectionAlgorithmUpgrade(const char* filePath) {
 		}
 	}
 
-	//imshow("VPolor", matVPolorDiff);
-	//imshow("Polor", matSimplifiedPolor);
-
+	//imshow("VPolar", matVPolarDiff);
 	imshow("res", res);
-	imwrite("res.jpg", res);
+	imwrite(filePath, res);
 
 	waitKey();
 }

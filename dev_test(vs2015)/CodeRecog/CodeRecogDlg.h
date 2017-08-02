@@ -30,7 +30,5 @@ protected:
 	DECLARE_MESSAGE_MAP()
 
 public:
-	afx_msg void OnBnClickedProcImage();
 	afx_msg void OnDetectTongueUpdatedAlgorithm();
-	afx_msg void OnBnClickedBtnTongueAndLips();
 };
