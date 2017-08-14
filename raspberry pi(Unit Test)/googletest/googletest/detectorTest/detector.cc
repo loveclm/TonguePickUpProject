@@ -262,7 +262,7 @@ int tongueDetectionAlgorithm(const char* filePath, int bTest) {
 * @author Pai Jin
 * @date 2017/8/2 (demo version for testing algorithm)
 */
-int tongueDetectionAlgorithmUpgrade(const char* filePath) {
+int tongueDetectionAlgorithmUpgrade(const char* filePath, int bTest) {
 	// iterators
 	int i = 0;
 	int j = 0;
