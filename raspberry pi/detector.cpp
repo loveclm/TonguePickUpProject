@@ -328,7 +328,7 @@ void tongueDetectionAlgorithmUpgrade(const char* filePath) {
 		int rowTemp = i * iScanStepY;
 		int lpos = -1;
 		for (int j = iScanStartX; j < iScanEndX; j++) {
-			if (matSimplifiedPolar.at<BYTE>(rowTemp, j) == 255) {
+			if (matSimplifiedPolar.at<uchar>(rowTemp, j) == 255) {
 				lpos = j;
 				break;
 			}
@@ -379,7 +379,7 @@ void tongueDetectionAlgorithmUpgrade(const char* filePath) {
 	for (int i = 0; i < matPolarEdgeSmooth.rows; i++) {
 		marks[i] = -1;
 		for (int j = 0; j < matPolarEdgeSmooth.cols; j++) {
-			if (matPolarEdgeSmooth.at<BYTE>(i, j) == 255) {
+			if (matPolarEdgeSmooth.at<uchar>(i, j) == 255) {
 				marks[i] = j + 5;
 				break;
 			}
