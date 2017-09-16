@@ -6,20 +6,57 @@
 * detectorTest case
 * usage: implement unit test
 * @author RG Jong
-* @date 2017/8/1
+* @date 2017/9/16
 */
 
-TEST(DetectTongue, EXISTINGFILE) {
-  EXPECT_EQ(DT_SUCCESS, tongueDetectionAlgorithm("images/image1.jpg", 1));
+
+TEST(ErosionTest, INVALIDPARAM) {
+  Mat mat, matRes;	
+
+  matRes = erosion(mat, 1);
+  EXPECT_EQ(NULL, matRes.data);
+
+  mat = Mat::zeros(Size(10, 10), CV_8UC1);
+  matRes = erosion(mat, -1);
+  EXPECT_EQ(NULL, matRes.data);
 }
-TEST(DetectTongue, NOTEXISTINGFILE) {
-  EXPECT_EQ(DT_FILENOTEXIST, tongueDetectionAlgorithm("non-image.jpg", 1));
+
+TEST(DilationTest, INVALIDPARAM) {
+  Mat mat, matRes;	
+
+  matRes = dilation(mat, 1);
+  EXPECT_EQ(NULL, matRes.data);
+
+  mat = Mat::zeros(Size(10, 10), CV_8UC1);
+  matRes = dilation(mat, -1);
+  EXPECT_EQ(NULL, matRes.data);
 }
-TEST(DetectTongueUpgrade, EXISTINGFILE) {
-  EXPECT_EQ(DT_SUCCESS, tongueDetectionAlgorithmUpgrade("images/image1.jpg", 1));
+
+TEST(RemoveNoiseContaurTest, INVALIDPARAM) {
+  Mat mat, matRes;	
+
+  matRes = removeNoiseContaur(mat, 1);
+  EXPECT_EQ(NULL, matRes.data);
+
+  mat = Mat::zeros(Size(10, 10), CV_8UC1);
+  matRes = removeNoiseContaur(mat, 0);
+  EXPECT_EQ(NULL, matRes.data);
+
+  matRes = removeNoiseContaur(mat, -5);
+  EXPECT_EQ(NULL, matRes.data);
 }
-TEST(DetectTongueUpgrade, NOTEXISTINGFILE) {
-  EXPECT_EQ(DT_FILENOTEXIST, tongueDetectionAlgorithmUpgrade("non-image.jpg", 1));
+
+TEST(GetSkinMaskTest, INVALIDPARAM) {
+  Mat mat, matRes;	
+
+  matRes = getSkinMask(mat);
+  EXPECT_EQ(NULL, matRes.data);
+}
+
+TEST(TongueDetectionTest, INVALIDPARAM) {
+  bool res;	
+  res = tongueDetection("non-image.jpg");
+  EXPECT_EQ(false, res);
 }
 
 int main(int argc, char **argv) {

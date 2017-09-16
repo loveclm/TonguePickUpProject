@@ -2,35 +2,79 @@
 #define GTEST_DETECTOR_H_
 #endif
 
-#define DT_SUCCESS	0
-#define DT_FAIL		1
-#define DT_FILENOTEXIST 2
+#include "opencv/cv.h"
+#include "opencv/highgui.h"
+#include "opencv2/opencv.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
+#include "opencv2/highgui/highgui.hpp"
 
+#include <vector>
+#include <string>
+
+using namespace cv;
+
+/**
+* @brief Erosion operation
+
+* Erosion = erode + dilate
+* This operation used to remove noise.
+
+* @param Mat: sourse image matrix
+* @param int: erode and dilate operation size.
+* @return Mat: Dest image matrix
+* @author Pai Jin
+* @date 2017/9/12
+*/
+Mat erosion(Mat mat, int size);
+
+/**
+* @brief Dilation operation
+
+* Dilation = dilate + erode
+* This operation used to remove holds.
+
+* @param Mat: sourse image matrix
+* @param int: erode and dilate operation size.
+* @return Mat: Dest image matrix
+* @author Pai Jin
+* @date 2017/9/12
+*/
+Mat dilation(Mat mat, int size);
+
+/**
+* @brief Remove seperated noise contours from mask images
+
+* Mask image from thresolding include seperated noise area.
+* To remove these noise areas, at first find all contourse and using bounding rect
+* to remove noise area.
+
+* @param Mat: sourse image matrix that included noise area
+* @param int: thresold value.
+* @return Mat: Dest image matrix that removed noise area
+* @author Pai Jin
+* @date 2017/9/16
+*/
+Mat removeNoiseContaur(Mat matNoise, int thresold);
 
 
 /**
-* @brief Process image to detect edge of tongue
+* @brief Get skin mask from saturation image
 
-* Process image to detect edge of tongue
-
-* @param filePath the path of image file to be processed
-* @param bTest 0: normal mode(default), 1: unit test mode(should not allow any output)
-* @return DT_SUCCESS: finished successfully, DT_FILENOTEXIST: file not found
+* @param Mat: saturation image
+* @return Mat: mask image of skin area
 * @author Pai Jin
-* @date 2017/7/17 (demo version for testing algorithm)
+* @date 2017/9/14
 */
-int tongueDetectionAlgorithm(const char* filePath, int bTest = 0);
-
+Mat getSkinMask(Mat matSat);
 
 /**
-* @brief Process image to detect edge of tongue - 2nd algorithm
+* @brief Tongue detection function
 
-* Process image to detect edge of tongue ### algorithm 2
+* Read image file from filepath, detect tongue area and output to image file.
 
-* @param filePath the path of image file to be processed
-* @param bTest 0: normal mode(default), 1: unit test mode(should not allow any output)
-* @return DT_SUCCESS: finished successfully, DT_FILENOTEXIST: file not found, DT_FAIL: failure
+* @param const char*: filepath of image file
+* @return bool: true: success, false: failed
 * @author Pai Jin
-* @date 2017/7/20 (demo version for testing algorithm)
+* @date 2017/9/16
 */
-int tongueDetectionAlgorithmUpgrade(const char* filePath, int bTest = 0);
+bool tongueDetection(const char* filePath);

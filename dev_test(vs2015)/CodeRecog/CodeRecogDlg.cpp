@@ -155,456 +155,38 @@ HCURSOR CTongueDetectionDlg::OnQueryDragIcon()
  Main part of algorithm
 ******************************************************************************/
 
-// temporary vector arrays to be used in function
+// Global variables using to contour operations.
 vector<Mat> g_tempChannels;
 vector<vector<Point>> g_contours1;
 vector<vector<Point>> g_contours2;
-vector<vector<Point>> g_contours3;
 vector<Point> g_tempContour1;
 vector<Point> g_tempContour2;
-vector<Point> g_tempContour3;
-vector<Rect> g_boundingRects;
-
 
 /**
-* @brief differentiate image
+* @brief Erosion operation
 
-* Calculate horizontal difference of give image
+* Erosion = erode + dilate
+* This operation used to remove noise.
 
-* @param src input image to be processed(must be gray image)
-* @param dst output image of differentiation(gray image)
-* @param step step of horizontal differentiation
+* @param Mat: sourse image matrix
+* @param int: erode and dilate operation size.
+* @return Mat: Dest image matrix
 * @author Pai Jin
-* @date 2017/7/17 (demo version for testing algorithm)
+* @date 2017/9/12
 */
-void differentiate(Mat& src, Mat& dst, int step, int thres) {
-	int w, h;
-	w = src.cols;
-	h = src.rows;
-	dst = Mat::zeros(Size(w, h), src.type());
-	for (int i = 0; i < h; i++) {
-		for (int j = step; j < w - step; j++) {
-			if (src.at<byte>(i, j + step) > 0 && src.at<byte>(i, j - step) > 0) {
-				int diff = abs(src.at<byte>(i, j - step) - src.at<byte>(i, j + step));
-				dst.at<byte>(i, j) = (diff > thres) ? 255 : 0;
-			}
-		}
-	}
-}
-
-
-/**
-* @brief Process image to detect edge of tongue
-
-* Process image to detect edge of tongue
-
-* @param filePath the path of image file to be processed
-* @return void
-* @author Pai Jin
-* @date 2017/7/17 (demo version for testing algorithm)
-*/
-void tongueDetectionAlgorithm(const char* filePath) {
-	// read image file to be processed
-	Mat matOrg = imread(filePath);
-	Mat matResizedOrg;
-	resize(matOrg, matResizedOrg, Size(matOrg.cols / 2, matOrg.rows / 2));
-	imshow("Original Image", matResizedOrg);
-
-	// apply blur to remove noise
-	GaussianBlur(matResizedOrg, matResizedOrg, Size(5, 5), 1);
-
-	// get channels of hue, saturation, value
-	Mat matOrgHSV;																		// HSV image
-	cvtColor(matResizedOrg, matOrgHSV, CV_BGR2HSV);
-	split(matOrgHSV, g_tempChannels);
-
-	Mat matVPolar;																		// will be the result of polar coordination transform
-	Point2f ptCenter = Point2f(matResizedOrg.cols / 2, matResizedOrg.rows / 2);			// center point of polar coordination transform
-	double dRadius = (matResizedOrg.cols > matResizedOrg.rows) ? matResizedOrg.cols / 2 : matResizedOrg.rows / 2;	// radius of PCT
-	// apply polar coordination transformation
-	linearPolar(g_tempChannels[2], matVPolar, ptCenter, dRadius, INTER_LINEAR + WARP_FILL_OUTLIERS);
-
-	resize(matVPolar, matVPolar, Size((int)dRadius / 2, matVPolar.rows));
-
-	// calculate differentiation image
-	Mat matVDiff;
-	differentiate(matVPolar, matVDiff, 2, 2);
-
-	// erode image to remove unnecessary connections of contours
-	Mat matElem = getStructuringElement(MORPH_ELLIPSE, Size(3, 3), Point(1, 1));
-	erode(matVDiff, matVDiff, matElem);
-
-	Mat matVDiffResv = matVDiff.clone();
-	cvtColor(matVPolar, matVPolar, CV_GRAY2BGR);
-
-	Mat matProcVPolar = Mat::zeros(Size(matVPolar.cols, matVPolar.rows), CV_8UC1);
-
-	// find contours
-	findContours(matVDiffResv, g_contours1, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
-
-	g_contours2.clear();
-	for (int i = 0; i < g_contours1.size(); i++) {
-		Rect rt = boundingRect(g_contours1[i]);
-		if (rt.height > matVDiff.rows / 8) {
-			approxPolyDP(g_contours1[i], g_tempContour1, 4, true);
-			g_tempContour2.clear();
-			for (int j = 0; j < g_tempContour1.size() - 1; j++) {
-				int id1 = (j == 0) ? g_tempContour1.size() - 1 : j - 1;
-				int id2 = j;
-				int id3 = (j == g_tempContour1.size() - 1) ? 0 : j + 1;
-
-				int x = (g_tempContour1[id1].x + g_tempContour1[id2].x + g_tempContour1[id3].x) / 3;
-				int y = (g_tempContour1[id1].y + g_tempContour1[id2].y + g_tempContour1[id3].y) / 3;
-
-				g_tempContour2.push_back(Point(x, y));
-			}
-			polylines(matVPolar, g_tempContour1, true, Scalar(0, 0, 255));
-			g_contours2.push_back(g_tempContour2);
-		}
-	}
-
-	int iMaxId = -1;
-	int iMaxHeight = 0;
-	for (int i = 0; i < g_contours2.size(); i++) {
-		Rect rtBound = boundingRect(g_contours2[i]);
-		if (rtBound.height > iMaxHeight) {
-			iMaxHeight = rtBound.height;
-			iMaxId = i;
-		}
-	}
-
-	if (iMaxHeight < matProcVPolar.rows * 8 / 10) {
-		for (int i = 0; i < g_contours2.size(); i++) {
-			fillPoly(matProcVPolar, g_contours2, Scalar(255));
-		}
-	}
-	else {
-		g_contours3.clear();
-		g_contours3.push_back(g_contours2[iMaxId]);
-		fillPoly(matProcVPolar, g_contours3, Scalar(255));
-	}
-
-	int* iMarks = new int[matProcVPolar.rows];
-	for (int i = 0; i < matProcVPolar.rows; i++) {
-		iMarks[i] = -1;
-
-		int iLPos = -1, iRPos = -1;
-		for (int j = 0; j < matProcVPolar.cols; j++) {
-			if (matProcVPolar.at<BYTE>(i, j) == 255) {
-				iRPos = j;
-				if (iLPos == -1) iLPos = j;
-			}
-		}
-
-		if (iLPos >= 0) {
-			iMarks[i] = (iLPos + iRPos) / 2;
-		}
-	}
-
-	g_contours3.clear();
-	g_tempContour2.clear();
-	// get edge line of tongue from contour in polar coordinate
-	double m = 2 * 3.141592 / matProcVPolar.rows;
-	for (int i = 0; i < matProcVPolar.rows; i++) {
-		if (iMarks[i] >= 0) {
-			double dAngle = m*i;
-			double dR = dRadius * iMarks[i] / matProcVPolar.cols;
-			int x = matResizedOrg.cols / 2 + (int)(cos(dAngle)*dR);
-			int y = matResizedOrg.rows / 2 + (int)(sin(dAngle)*dR);
-			if (i == 108) {
-				int k = 0;
-			}
-			g_tempContour2.push_back(Point(x, y));
-		}
-	}
-
-	delete[] iMarks;
-
-	// smooth polyline
-	g_tempContour3.clear();
-	int iSmooth = 10;
-	for (int i = 0; i < g_tempContour2.size(); i++) {
-
-		int x = 0;
-		int y = 0;
-		for (int j = -iSmooth; j <= iSmooth; j++) {
-			int id = (i + j + g_tempContour2.size()) % g_tempContour2.size();
-			x += g_tempContour2[id].x;
-			y += g_tempContour2[id].y;
-		}
-
-		x /= (iSmooth * 2 + 1);
-		y /= (iSmooth * 2 + 1);
-
-		g_tempContour3.push_back(Point(x, y));
-	}
-
-	g_contours3.push_back(g_tempContour3);
-
-	// create mask image
-	Mat matMask = Mat::zeros(matResizedOrg.rows, matResizedOrg.cols, CV_8UC1);
-	fillPoly(matMask, g_contours3, Scalar(255));
-	GaussianBlur(matMask, matMask, Size(9, 9), 0);
-
-	// apply mask
-	Mat matFinal = matResizedOrg;
-	for (int i = 0; i < matResizedOrg.rows; i++) {
-		for (int j = 0; j < matResizedOrg.cols; j++) {
-			double dOpacity = (double)matMask.at<uchar>(i, j) / 255;
-			matFinal.at<Vec3b>(i, j)[0] = (uchar)((int)matResizedOrg.at<Vec3b>(i, j)[0] * dOpacity);
-			matFinal.at<Vec3b>(i, j)[1] = (uchar)((int)matResizedOrg.at<Vec3b>(i, j)[1] * dOpacity);
-			matFinal.at<Vec3b>(i, j)[2] = (uchar)((int)matResizedOrg.at<Vec3b>(i, j)[2] * dOpacity);
-
-		}
-	}
-
-	//imshow("VDiff", matVDiff);
-	//imshow("ProcPolar", matProcVPolar);
-	imshow("Result", matFinal);
-
-	waitKey();
-}
-
-
-/**
-* @brief Process image to detect edge of tongue - 2nd algorithm
-
-* Process image to detect edge of tongue ### algorithm 2
-
-* @param filePath the path of image file to be processed
-* @return void
-* @author Pai Jin
-* @date 2017/8/2 (demo version for testing algorithm)
-*/
-void tongueDetectionAlgorithmUpgrade(const char* filePath) {
-	// read image from file to opencv mat
-	Mat matOrg = imread(filePath);
-	Mat matResizedOrg;
-	// resize image
-	resize(matOrg, matResizedOrg, Size(matOrg.cols / 2, matOrg.rows / 2));
-	imshow("V", matResizedOrg);
-
-	// gaussian blur to remove noises
-	GaussianBlur(matResizedOrg, matResizedOrg, Size(5, 5), 1);
-
-	// convert image from RGB mode to HSV mode
-	Mat matOrgHSV;
-	cvtColor(matResizedOrg, matOrgHSV, CV_BGR2HSV);
-
-	// split image into channels to get Value channel
-	split(matOrgHSV, g_tempChannels);
-
-	// transform image from vertical coordinate system into polar coordinate system
-	Mat matVPolar;
-	Point2f center = Point2f(matResizedOrg.cols / 2, matResizedOrg.rows / 2);
-	double radius = (matResizedOrg.cols > matResizedOrg.rows) ? matResizedOrg.cols / 2 : matResizedOrg.rows / 2;
-	linearPolar(g_tempChannels[2], matVPolar, center, radius, INTER_LINEAR + WARP_FILL_OUTLIERS);
-
-	resize(matVPolar, matVPolar, Size((int)radius / 2, matVPolar.rows));
-
-	// differentiate transformed image horizontally
-	Mat matVPolarDiff;
-	differentiate(matVPolar, matVPolarDiff, 2, 8);
-
-	// remove noises
-	Mat matElem = getStructuringElement(MORPH_ELLIPSE, Size(3, 3), Point(1, 1)); // erode amount: 2
-	erode(matVPolarDiff, matVPolarDiff, matElem);
-
-	Mat matVPolarDiffResv = matVPolarDiff.clone();
-
-	cvtColor(matVPolar, matVPolar, CV_GRAY2BGR);
-
-	// simplify image in polar coordinate system
-	Mat matSimplifiedPolar = Mat::zeros(Size(matVPolar.cols, matVPolar.rows), CV_8UC1);
-
-	// find all contours
-	findContours(matVPolarDiffResv, g_contours1, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
-
-	// choose contours the height of which is greater than one 16th of the height of the image
-	g_contours2.clear();
-	g_boundingRects.clear();
-	for (int i = 0; i < g_contours1.size(); i++) {
-		Rect rt = boundingRect(g_contours1[i]);
-		if (rt.height > matSimplifiedPolar.rows / 16) {
-
-			approxPolyDP(g_contours1[i], g_tempContour1, 4, true);
-			polylines(matVPolar, g_tempContour1, true, Scalar(0, 0, 255));
-
-			g_contours2.push_back(g_tempContour1);
-			g_boundingRects.push_back(rt);
-		}
-	}
-
-	// generate new black-white image of polar coordinate system
-	for (int i = 0; i < g_contours2.size(); i++) {
-		fillPoly(matSimplifiedPolar, g_contours2, Scalar(255));
-	}
-	
-	dilate(matSimplifiedPolar, matSimplifiedPolar, matElem);
-
-	// guess the edge of tongue from the differentiated and simplified image in polar coordinate system
-	int* marks = new int[matSimplifiedPolar.rows];
-
-	vector<Point> ptMarks;
-	int iScanStepY = (matSimplifiedPolar.rows - 5) / 40;
-	int iScanStartX = matSimplifiedPolar.cols / 6;
-	int iScanEndX = matSimplifiedPolar.cols * 7 / 8;
-	int bFirst = 1;
-	int lastX = matSimplifiedPolar.cols * 3 / 4;
-	for (int i = 0; i < 40; i++) {
-		int rowTemp = 5 + i * iScanStepY;
-		int lpos = -1;
-		for (int j = iScanStartX; j < iScanEndX; j++) {
-			if (matSimplifiedPolar.at<BYTE>(rowTemp, j) == 255) {
-				lpos = j;
-				break;
-			}
-		}
-
-		int minDiff = 1000;
-		if (lpos > 0) {
-			
-			if (bFirst) {
-				bFirst = 0;
-				iScanStartX = matSimplifiedPolar.cols / 4;
-				iScanEndX = matSimplifiedPolar.cols * 7 / 8;
-			}
-			lastX = lpos;
-			ptMarks.push_back(Point(lpos + 5, rowTemp));
-		}
-		
-	}
-
-	cvtColor(matSimplifiedPolar, matSimplifiedPolar, CV_GRAY2RGB);
-	
-	bFirst = 1;
-	vector<Point> ptMarksSmooth;
-	if (ptMarks.size() > 3) {
-		ptMarksSmooth.push_back(ptMarks.front());
-		for (int i = 1; i < ptMarks.size() - 1; i++) {
-			int x = (ptMarks[i - 1].x + ptMarks[i].x + ptMarks[i + 1].x) / 3;
-			ptMarksSmooth.push_back(Point(x, ptMarks[i].y));
-			line(matSimplifiedPolar, ptMarksSmooth[i-1], ptMarksSmooth[i], Scalar(0, 0, 255));
-		}
-		ptMarksSmooth.push_back(ptMarks.back());
-	}
-	else {
-		return;
-	}
-
-	Mat matPolarEdgeSmooth = Mat::zeros(matSimplifiedPolar.rows, matSimplifiedPolar.cols, CV_8UC1);
-	Point ptLast = Point(ptMarksSmooth.back().x, ptMarksSmooth.back().y - matSimplifiedPolar.rows);
-	line(matPolarEdgeSmooth, ptLast, ptMarksSmooth[0], Scalar(255), 3);
-	for (int i = 0; i < ptMarksSmooth.size() - 1; i++) {
-		line(matPolarEdgeSmooth, ptMarksSmooth[i], ptMarksSmooth[i + 1], Scalar(255), 3);
-	}
-	ptLast = Point(ptMarksSmooth.front().x, matSimplifiedPolar.rows + ptMarksSmooth.front().y);
-	line(matPolarEdgeSmooth, ptMarksSmooth.back(), ptLast, Scalar(255), 3);
-
-	int density = 1;
-
-	for (int i = 0; i < matPolarEdgeSmooth.rows; i++) {
-		marks[i] = -1;
-		for (int j = 0; j < matPolarEdgeSmooth.cols; j++) {
-			if (matPolarEdgeSmooth.at<BYTE>(i, j) == 255) {
-				marks[i] = j + 5;
-				break;
-			}
-		}
-	}
-
-	// generate polyline in original coordinate system from the detected edge in polar coordinate system
-	g_contours3.clear();
-	g_tempContour2.clear();
-	double m = 2 * 3.141592 / matSimplifiedPolar.rows;
-	for (int i = 0; i < matSimplifiedPolar.rows; i++) {
-		if (marks[i] >= 0) {
-			double angle = m*i;
-			double r = radius * marks[i] / matSimplifiedPolar.cols;
-			int x = matResizedOrg.cols / 2 + (int)(cos(angle)*r);
-			int y = matResizedOrg.rows / 2 + (int)(sin(angle)*r);
-			if (i == 108) {
-				int k = 0;
-			}
-			g_tempContour2.push_back(Point(x, y));
-		}
-	}
-
-	delete[] marks;
-
-	// smooth the polyline
-	g_tempContour3.clear();
-	int smooth = 5;
-	for (int i = 0; i < g_tempContour2.size(); i++) {
-
-		int x = 0;
-		int y = 0;
-		for (int j = -smooth; j <= smooth; j++) {
-			int id = (i + j + g_tempContour2.size()) % g_tempContour2.size();
-			x += g_tempContour2[id].x;
-			y += g_tempContour2[id].y;
-		}
-
-		x /= (smooth * 2 + 1);
-		y /= (smooth * 2 + 1);
-
-		g_tempContour3.push_back(Point(x, y));
-	}
-
-	g_contours3.push_back(g_tempContour3);
-
-	// create mask image with black and white
-	Mat mask = Mat::zeros(matResizedOrg.rows, matResizedOrg.cols, CV_8UC1);
-	fillPoly(mask, g_contours3, Scalar(255));
-
-	GaussianBlur(mask, mask, Size(9, 9), 0);
-
-	// get final image applied mask
-	Mat res = matResizedOrg;
-	for (int i = 0; i < matResizedOrg.rows; i++) {
-		for (int j = 0; j < matResizedOrg.cols; j++) {
-			double rate = (double)mask.at<uchar>(i, j) / 255;
-			res.at<Vec3b>(i, j)[0] = (uchar)((int)matResizedOrg.at<Vec3b>(i, j)[0] * rate);
-			res.at<Vec3b>(i, j)[1] = (uchar)((int)matResizedOrg.at<Vec3b>(i, j)[1] * rate);
-			res.at<Vec3b>(i, j)[2] = (uchar)((int)matResizedOrg.at<Vec3b>(i, j)[2] * rate);
-
-		}
-	}
-
-	imshow("edgesmooth", matPolarEdgeSmooth);
-	imshow("simplifiedpoloar", matSimplifiedPolar);
-	imshow("vopel", matVPolar);
-	imshow("VPolar", matVPolarDiff);
-	//imwrite(filePath, res);
-	imshow("res", res);
-
-	waitKey();
-}
-
-string iToS(int val) {
-	stringstream ss;
-	ss << val;
-	string str = ss.str();
-	return str;
-}
-
-void displayText(Mat img, string txt) {
-	cv::Point myPoint;
-	myPoint.x = 10;
-	myPoint.y = 40;
-
-	/// Font Face
-	int myFontFace = 2;
-
-	/// Font Scale
-	double myFontScale = 1.2;
-
-	cv::putText(img, txt, myPoint, myFontFace, myFontScale, Scalar::all(255));
-}
-
 Mat erosion(Mat mat, int size)
 {
 	Mat erosion_dst;
+
+	if (mat.data == NULL) {
+		std::cout << "erosion(): mat parameter is invalid." << std::endl;
+		return mat;
+	}
+	if (size < 0) {
+		std::cout << "erosion(): size parameter must be positive value." << std::endl;
+		return erosion_dst;
+	}
+
 	int erosion_type = MORPH_RECT;
 	int erosion_size = size;
 
@@ -617,9 +199,32 @@ Mat erosion(Mat mat, int size)
 	return erosion_dst;
 }
 
+
+/**
+* @brief Dilation operation
+
+* Dilation = dilate + erode
+* This operation used to remove holds.
+
+* @param Mat: sourse image matrix
+* @param int: erode and dilate operation size.
+* @return Mat: Dest image matrix
+* @author Pai Jin
+* @date 2017/9/12
+*/
 Mat dilation(Mat mat, int size)
 {
 	Mat dilation_dst;
+
+	if (mat.data == NULL) {
+		std::cout << "dilation(): mat parameter is invalid." << std::endl;
+		return mat;
+	}
+	if (size < 0) {
+		std::cout << "dilation(): size parameter must be positive value." << std::endl;
+		return dilation_dst;
+	}
+	
 	int dilation_type = MORPH_RECT;
 	int dilation_size = size;
 
@@ -632,173 +237,190 @@ Mat dilation(Mat mat, int size)
 	return dilation_dst;
 }
 
+/**
+* @brief Remove seperated noise contours from mask images
+
+* Mask image from thresolding include seperated noise area.
+* To remove these noise areas, at first find all contourse and using bounding rect
+* to remove noise area.
+
+* @param Mat: sourse image matrix that included noise area
+* @param int: thresold value.
+* @return Mat: Dest image matrix that removed noise area
+* @author Pai Jin
+* @date 2017/9/16
+*/
+Mat removeNoiseContaur(Mat matNoise, int thresold) {
+	Mat matRet;
+
+	if (matNoise.data == NULL) {
+		std::cout << "removeNoiseContaur(): matNoise parameter is invalid." << std::endl;
+		return matRet;
+	}
+	if (thresold < 1) {
+		std::cout << "removeNoiseContaur(): thresold parameter must be great than zero." << std::endl;
+		return matRet;
+	}
+
+	// find all contours
+	findContours(matNoise, g_contours1, CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE);
+
+	// if contour's bounding rect is small than thresold, this contour regard as noise contour and will be removed.
+	g_contours2.clear();
+	Rect rtB = boundingRect(g_contours1[g_contours1.size() - 1]);
+	for (int i = 0; i < g_contours1.size(); i++) {
+
+		// Get contour's bounding rect
+		Rect rt = boundingRect(g_contours1[i]);
+
+		// The contour that is small than thresold will be removed.
+		// and other contour's points will be smoothed.
+		if (rt.height > matNoise.rows / thresold) {
+
+			// get points of contour
+			approxPolyDP(g_contours1[i], g_tempContour1, 1, true);
+
+			// smooth processing
+			int smooth = 5;
+			for (int i = 0; i < g_tempContour1.size(); i++) {
+
+				int x = 0;
+				int y = 0;
+				int count = 0;
+
+				if (g_tempContour1[i].y > 10) {
+					for (int j = -smooth; j <= smooth; j++) {
+						int id = (i + j + g_tempContour1.size()) % g_tempContour1.size();
+						if ((abs(g_tempContour1[i].x - g_tempContour1[id].x) > 50 ||
+							g_tempContour1[id].y < 10) &&
+							id != i) {
+							continue;
+						}
+						x += g_tempContour1[id].x;
+						y += g_tempContour1[id].y;
+						count++;
+					}
+
+					x /= count;
+					y /= count;
+				}
+				else {
+					x = g_tempContour1[i].x;
+					y = g_tempContour1[i].y;
+				}
+
+				g_tempContour2.push_back(Point(x, y));
+			}
+
+			g_contours2.push_back(g_tempContour2);
+		}
+	}
+
+	// Generate mask from contours that removed noise area.
+	matRet = Mat::zeros(Size(matNoise.cols, matNoise.rows), CV_8UC1);
+	fillPoly(matRet, g_contours2, Scalar(255));
+
+	return matNoise;
+}
+
+
+/**
+* @brief Get skin mask from saturation image
+
+* @param Mat: saturation image
+* @return Mat: mask image of skin area
+* @author Pai Jin
+* @date 2017/9/14
+*/
 Mat getSkinMask(Mat matSat) {
 	Mat matSkin, matSkinMask;
+
+	if (matSat.data == NULL) {
+		std::cout << "getSkinMask(): matsat parameter is invalid." << std::endl;
+		return matSkinMask;
+	}	
+
+	// To remove grey pixels, thresolding saturation image by OTSU method.
 	threshold(matSat, matSkin, 0, 255, CV_THRESH_BINARY | CV_THRESH_OTSU);
 
-	// A image with size greater than the present object is created, it is needed from floodFill()
+	// because grey pixels area generally consists of two parts(left and right area), create left and right mask.
 	cv::Mat maskL = cv::Mat::zeros(matSat.rows + 2, matSat.cols + 2, CV_8U);
 	cv::Mat maskR = cv::Mat::zeros(matSat.rows + 2, matSat.cols + 2, CV_8U);
-
 	cv::floodFill(matSkin, maskL, cv::Point(0, 0), 255, 0, cv::Scalar(), cv::Scalar(), 4 + (255 << 8) + cv::FLOODFILL_MASK_ONLY);
 	cv::floodFill(matSkin, maskR, cv::Point(matSat.cols - 2, matSat.rows - 2), 255, 0, cv::Scalar(), cv::Scalar(), 4 + (255 << 8) + cv::FLOODFILL_MASK_ONLY);
-	//NOTE Since the mask is larger than the filled image, a pixel  (x, y) in image corresponds to the pixel (x+1, y+1) in the mask .
 
-	//remove the extra rows/cols added earlier in the initialization of the mask, if you want of course it is just "optional"
+	//Left and Right area merge to one area. and rescailing
 	maskL = maskL + maskR;
 	maskL = 255 - maskL;
-
 	maskL(Range(1, maskL.rows - 1), Range(1, maskL.cols - 1)).copyTo(matSkinMask);
+
+	// Remove noise.
+	matSkinMask = removeNoiseContaur(matSkinMask, 4);
+	if (matSkinMask.data == NULL) {
+		std::cout << "removeNoiseContaur() function failed." << std::endl;
+		return matSkinMask;
+	}
 
 	return matSkinMask;
 }
 
-int getTangueThresoldValue(Mat matHue) {
-	MatND histogram;
-	const int* channel_numbers = { 0 };
-	float channel_range[] = { 0.0, 255.0 };
-	const float* channel_ranges = channel_range;
-	int number_bins = 255;
 
-	calcHist(&matHue, 1, channel_numbers, Mat(), histogram, 1, &number_bins, &channel_ranges);
+/**
+* @brief Tongue detection function
 
-	int minV = std::numeric_limits<int>::max();
-	int minIndex = 0;
-	for (int i = 6; i < 10; i++) {
-		int histV = cvRound(histogram.at<float>(i));
-		string str = iToS(histV);
-		//MessageBox(0, str.c_str(), "MessageBox caption", MB_OK);
-		if (minV > histV) {
-			minV = histV;
-			minIndex = i;
-		}
+* Read image file from filepath, detect tongue area and output to image file.
+
+* @param const char*: filepath of image file
+* @return bool: true: success, false: failed
+* @author Pai Jin
+* @date 2017/9/16
+*/
+bool tongueDetection(const char* filePath) {
+	if (filePath == NULL) {
+		std::cout << "Please input filename." << filePath << std::endl;
+		return false;
 	}
-
-	return minIndex;
-}
-
-vector<vector<Point>> contours1;
-vector<vector<Point>> contours2;
-vector<Point> tempContour1;
-
-Mat removeNoiseContaur(Mat matNoise) {
-	
-
-	// find all contours
-	findContours(matNoise, contours1, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE);
-
-	// choose contours the height of which is greater than one 16th of the height of the image
-	contours2.clear();
-	for (int i = 0; i < contours1.size(); i++) {
-		Rect rt = boundingRect(contours1[i]);
-		if (rt.height > matNoise.rows / 4) {
-			approxPolyDP(contours1[i], tempContour1, 1, true);
-			contours2.push_back(tempContour1);
-		}
-	}
-
-	Mat matRet = Mat::zeros(Size(matNoise.cols, matNoise.rows), CV_8UC1);
-	for (int i = 0; i < contours2.size(); i++) {
-		fillPoly(matRet, contours2, Scalar(255));
-	}
-	
-	return matRet;
-}
-
-Mat getTangueMask(Mat matSat, Mat matSkinMask) {
-	Mat matTangueMask, matTemp;
-
-	Mat matHue = g_tempChannels[0];
-	int tValue = getTangueThresoldValue(matHue);
-	threshold(matHue, matTangueMask, tValue, 255, CV_THRESH_BINARY);
-	bitwise_not(matTangueMask, matTangueMask);
-	matTangueMask = getSkinMask(matTangueMask);
-	matTangueMask.copyTo(matTemp, matSkinMask);
-	//matTangueMask1 = erosion(matTemp, 1);
-	//matTangueMask = dilation(matTemp, 1);
-	matTangueMask = removeNoiseContaur(matTemp);
-	//matTangueMask = erosion(matTangueMask, 1);
-
-	string str = iToS(tValue);
-	displayText(matTangueMask, str);
-
-	return matTangueMask;
-}
-
-Mat getHoleMask( Mat matV ) {
-	imshow("Hole matV", matV);
-
-	Mat matEro;
-	matEro = erosion(matV, 5);
-	matEro = dilation(matEro, 5);
-	imshow("Hole erosion", matEro);
-
-	Mat matHoleMask;
-	Mat matHoleDiff;
-	Mat kern = (Mat_<char>(5, 5) << 0, 0, -1, 0, 0,
-									0, -2, -3, -2, 0,
-									-1, -3, 27, -3, -1,
-									0, -2, -3, -2, 0,
-									0, 0, -1, 0, 0);
-
-	filter2D(matEro, matHoleMask, matEro.depth(), kern);
-	imshow("Hole Mask1", matHoleMask);
-
-	Mat kern1 = (Mat_<char>(5, 5) << 0, 0, -3, 0, 0,
-									0, -2, -1, -2, 0,
-									-3, -1, 24, -1, -3,
-									0, -2, -1, -2, 0,
-									0, 0, -3, 0, 0);
-	filter2D(matEro, matHoleDiff, matEro.depth(), kern1);
-	imshow("Hole Diff", matHoleDiff);
-
-	threshold(matHoleMask, matHoleMask, 254, 255, CV_THRESH_BINARY);
-	matHoleMask = erosion(matHoleMask, 1);
-	imshow("Hole Mask2", matHoleMask);
-	return matHoleMask;
-}
-
-void tongueDetectionAlgorithmUpgrade1(const char* filePath) {
 	// read image from file to opencv mat
 	Mat matOrg = imread(filePath);
-	Mat matResizedOrg;
-	// resize image
-	resize(matOrg, matResizedOrg, Size(matOrg.cols / 2, matOrg.rows / 2));
-	imshow("V", matResizedOrg);
 
-	GaussianBlur(matResizedOrg, matResizedOrg, Size(5, 5), 1);	
+	if (matOrg.data == NULL) {
+		std::cout << "counld not read " << filePath << "." << std::endl;
+		return false;
+	}
 
+	// initialize global variables
+	g_tempChannels.clear();
+	g_contours1.clear();
+	g_contours2.clear();
+	g_tempContour1.clear();
+	g_tempContour2.clear();
+
+	// convert original image to HSV image
 	Mat matOrgHSV;
-	cvtColor(matResizedOrg, matOrgHSV, CV_BGR2HSV);
+	cvtColor(matOrg, matOrgHSV, CV_BGR2HSV);
 
 	// split image into channels to get Value channel
 	split(matOrgHSV, g_tempChannels);
-	
-	//imshow("H", g_tempChannels[0]);
-	//imshow("S", g_tempChannels[1]);
-	//imshow("V", g_tempChannels[2]);
 
+	// get skin mask
 	Mat matSkinMask = getSkinMask(g_tempChannels[1]);
+	if (matSkinMask.data == NULL) {
+		std::cout << "tongueDetection() function failed." << std::endl;
+		return false;
+	}
 
-	Mat matTangueMask = getTangueMask(g_tempChannels[0], matSkinMask);
+	// get skin image
+	Mat matSkin;
+	matOrg.copyTo(matSkin, matSkinMask);
+	//imshow("Skin", matSkin);
 
-	Mat matFinal;
-	matResizedOrg.copyTo(matFinal, matTangueMask);
-	cvtColor(matFinal, matOrgHSV, CV_BGR2HSV);
-	split(matOrgHSV, g_tempChannels);
+	std::string fpath1 = filePath;
+	fpath1.replace(fpath1.length() - 4, fpath1.length() - 1, "_skin.jpg");
+	imwrite(fpath1.c_str(), matSkin);
 
-	Mat matHoleMask = getHoleMask(g_tempChannels[1]);
-	
-
-	imshow("H", g_tempChannels[0]);
-	imshow("S", g_tempChannels[1]);
-	imshow("V", g_tempChannels[2]);
-	
-
-
-	imshow("GV0", matTangueMask);
-	imshow("GV1", matFinal);
+	return true;
 }
+
 
 
 
@@ -816,11 +438,11 @@ void CTongueDetectionDlg::OnDetectTongueUpdatedAlgorithm()
 {
 	CFileDialog dlg(1);
 	if (dlg.DoModal() == IDOK) {
+
 		// get selected file path
 		CString filePath = dlg.GetPathName();
-		// process image
-		//tongueDetectionAlgorithmUpgrade((LPCTSTR)filePath);
-		tongueDetectionAlgorithmUpgrade1((LPCTSTR)filePath);
 
+		// process image
+		bool ret = tongueDetection((LPCTSTR)filePath);
 	}
 }
