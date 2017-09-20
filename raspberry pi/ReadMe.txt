@@ -1,3 +1,4 @@
 How to Excute?
 
-./detector ./images/0905
+./detector -t ./images/0905
+./detector -s ./images/0905
