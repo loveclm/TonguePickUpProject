@@ -233,29 +233,16 @@ Mat getSkinMask(Mat matSat) {
 }
 
 
-string iToS(int val) {
-	stringstream ss;
-	ss << val;
-	string str = ss.str();
-	return str;
-}
+/**
+* @brief get difference matrix
 
-void displayText(Mat img, string txt) {
-	cv::Point myPoint;
-	myPoint.x = 10;
-	myPoint.y = 40;
-
-	/// Font Face
-	int myFontFace = 2;
-
-	/// Font Scale
-	double myFontScale = 1.2;
-
-	cv::putText(img, txt, myPoint, myFontFace, myFontScale, Scalar::all(255));
-}
-
-
-void differentiate(Mat& src, Mat& dst, int step, int thres) {
+* @param Mat: original image
+* @param Mat: destination image
+* @param int: distance of two points
+* @param float: middle point
+* @author Pai Jin
+* @date 2017/9/14
+*/void differentiate(Mat& src, Mat& dst, int step, int thres) {
 	int w, h;
 	w = src.cols;
 	h = src.rows;
@@ -271,57 +258,57 @@ void differentiate(Mat& src, Mat& dst, int step, int thres) {
 }
 
 
-int getTangueThresoldValue(Mat matHue) {
-	MatND histogram;
-	const int* channel_numbers = { 0 };
-	float channel_range[] = { 0.0, 255.0 };
-	const float* channel_ranges = channel_range;
-	int number_bins = 255;
+/**
+* @brief Image emphasis
 
-	calcHist(&matHue, 1, channel_numbers, Mat(), histogram, 1, &number_bins, &channel_ranges);
+* @param Mat: original image
+* @param int: min value
+* @param int: max value
+* @param float: middle point
+* @return Mat: emphasis image
+* @author Pai Jin
+* @date 2017/9/14
+*/
+Mat levelProcessing(Mat matOrg, int minVal, int maxVal, float mid) {
+	for (int i = 0; i < matOrg.rows; i++) {
+		for (int j = 0; j < matOrg.cols; j++) {
+			if (matOrg.at<unsigned char>(i, j) < minVal) {
+				matOrg.at<unsigned char>(i, j) = 0;
+			}
+			else if (matOrg.at<unsigned char>(i, j) > maxVal) {
+				matOrg.at<unsigned char>(i, j) = 255;
+			}
+			else {
+				float vX = matOrg.at<unsigned char>(i, j);
+				float vY = 0.0f;
 
-	int minV = std::numeric_limits<int>::max();
-	int minIndex = 0;
-	for (int i = 6; i < 10; i++) {
-		int histV = cvRound(histogram.at<float>(i));
-		string str = iToS(histV);
-		//MessageBox(0, str.c_str(), "MessageBox caption", MB_OK);
-		if (minV > histV) {
-			minV = histV;
-			minIndex = i;
+				int midX = float(maxVal - minVal) * mid + float(minVal);
+				int midY = 255.0f * float(1.0f - mid);
+
+
+				if (vX < midX) {
+					vY = float(vX - minVal) / float(midX - minVal) * midY;
+				}
+				else {
+					vY = float(vX - midX) / float(maxVal - midX) * float(255 - midY) + midY;
+				}
+				matOrg.at<unsigned char>(i, j) = int(vY);
+			}
 		}
 	}
 
-	return minIndex;
+	return matOrg;
 }
 
 
-Mat getTangueLipMask(Mat matSat, Mat matSkinMask) {
-	Mat matTangueMask, matTemp;
+/**
+* @brief Get tongue mask from saturation image
 
-	Mat matHue = g_tempChannels[0];
-	int tValue = getTangueThresoldValue(matHue);
-	threshold(matHue, matTangueMask, tValue, 255, CV_THRESH_BINARY);
-	bitwise_not(matTangueMask, matTangueMask);
-
-	matTangueMask.copyTo(matTemp, matSkinMask);
-	//matTemp = erosion(matTemp, 1);
-	//matTemp = dilation(matTemp, 1);
-	matTemp = dilation(matTemp, 5);
-	//imshow("matTemp", matTemp);
-	matTangueMask = removeNoiseContaur(matTemp, 8);
-	matTangueMask = getSkinMask(matTangueMask);
-	matTangueMask = erosion(matTangueMask, 5);
-	//imshow("matTangueMask", matTangueMask);
-	//matTangueMask = erosion(matTangueMask, 1);
-
-	//string str = iToS(tValue);
-	//displayText(matTangueMask, str);
-
-	return matTangueMask;
-}
-
-
+* @param Mat: original image
+* @return Mat: mask image of tongue area
+* @author Pai Jin
+* @date 2017/9/14
+*/
 Mat getTangueMask(Mat matOrg) {
 	// read image from file to opencv mat
 	//Mat matOrg = imread(filePath);
@@ -334,21 +321,28 @@ Mat getTangueMask(Mat matOrg) {
 	// split image into channels to get Value channel
 	split(matOrgHSV, g_tempChannels);
 
+	Mat matLevel;
+	matLevel = levelProcessing(g_tempChannels[2], 100, 165, 0.5f);
+	//imshow("matLevel", matLevel);
+
 	// transform image from vertical coordinate system into polar coordinate system
 	Mat matVPolar;
 	Point2f center = Point2f(matResizedOrg.cols / 2, matResizedOrg.rows / 2);
 	double radius = (matResizedOrg.cols > matResizedOrg.rows) ? matResizedOrg.cols / 2 : matResizedOrg.rows / 2;
-	linearPolar(g_tempChannels[2], matVPolar, center, radius, INTER_LINEAR + WARP_FILL_OUTLIERS);
+	linearPolar(matLevel, matVPolar, center, radius, INTER_LINEAR + WARP_FILL_OUTLIERS);
 
 	resize(matVPolar, matVPolar, Size((int)radius / 2, matVPolar.rows));
 
 	// differentiate transformed image horizontally
 	Mat matVPolarDiff;
-	differentiate(matVPolar, matVPolarDiff, 2, 8);
+	differentiate(matVPolar, matVPolarDiff, 2, 25);
+	//imshow("matVPolarDiff", matVPolarDiff);
 
 	// remove noises
 	Mat matElem = getStructuringElement(MORPH_ELLIPSE, Size(3, 3), Point(1, 1)); // erode amount: 2
-	erode(matVPolarDiff, matVPolarDiff, matElem);
+	matVPolarDiff = dilation(matVPolarDiff, 1);
+	matVPolarDiff = erosion(matVPolarDiff, 1);
+	//imshow("matVPolarDiff1", matVPolarDiff);
 
 	Mat matVPolarDiffResv = matVPolarDiff.clone();
 
@@ -379,18 +373,20 @@ Mat getTangueMask(Mat matOrg) {
 		fillPoly(matSimplifiedPolar, g_contours2, Scalar(255));
 	}
 
-	//imshow("Tangue Mask", matSimplifiedPolar);
-	dilate(matSimplifiedPolar, matSimplifiedPolar, matElem);
+
+	//imshow("matSimplifiedPolar0", matSimplifiedPolar);
+
 
 	// guess the edge of tongue from the differentiated and simplified image in polar coordinate system
 	int* marks = new int[matSimplifiedPolar.rows];
 
 	vector<Point> ptMarks;
 	float iScanStepY = (matSimplifiedPolar.rows - 5) / 80.0f;
-	int iScanStartX = matSimplifiedPolar.cols / 6;
-	int iScanEndX = matSimplifiedPolar.cols * 7 / 8;
+	int iScanStartX = matSimplifiedPolar.cols / 12;
+	int iScanEndX = matSimplifiedPolar.cols * 11 / 12;
 	int bFirst = 1;
-	int lastX = matSimplifiedPolar.cols * 3 / 4;
+	int lastX = matSimplifiedPolar.cols * 11 / 12;
+	int exceptionCount = 0;
 	for (int i = 0; i < 80; i++) {
 		int rowTemp = 5 + i * iScanStepY;
 		int lpos = -1;
@@ -406,9 +402,20 @@ Mat getTangueMask(Mat matOrg) {
 
 			if (bFirst) {
 				bFirst = 0;
-				iScanStartX = matSimplifiedPolar.cols / 4;
-				iScanEndX = matSimplifiedPolar.cols * 7 / 8;
+				iScanStartX = matSimplifiedPolar.cols / 12;
+				iScanEndX = matSimplifiedPolar.cols * 11 / 12;
 			}
+
+			if (lastX < matSimplifiedPolar.cols * 11 / 12 && abs(lastX - lpos) > matSimplifiedPolar.cols / 5) {
+				exceptionCount++;
+				if (exceptionCount > 5) {
+					Mat matRet;
+					return matRet;
+				}
+				continue;
+			}
+
+
 			lastX = lpos;
 			ptMarks.push_back(Point(lpos + 5, rowTemp));
 		}
@@ -416,6 +423,8 @@ Mat getTangueMask(Mat matOrg) {
 	}
 
 	cvtColor(matSimplifiedPolar, matSimplifiedPolar, CV_GRAY2RGB);
+
+	//imshow("matSimplifiedPolar", matSimplifiedPolar);
 
 	bFirst = 1;
 	vector<Point> ptMarksSmooth;
@@ -429,8 +438,7 @@ Mat getTangueMask(Mat matOrg) {
 		ptMarksSmooth.push_back(ptMarks.back());
 	}
 	else {
-		Mat matRet = Mat::zeros(matResizedOrg.rows, matResizedOrg.cols, CV_8UC1);
-		matRet = matRet + 255;
+		Mat matRet;
 		return matRet;
 	}
 
@@ -442,6 +450,8 @@ Mat getTangueMask(Mat matOrg) {
 	}
 	ptLast = Point(ptMarksSmooth.front().x, matSimplifiedPolar.rows + ptMarksSmooth.front().y);
 	line(matPolarEdgeSmooth, ptMarksSmooth.back(), ptLast, Scalar(255), 3);
+
+	//imshow("matPolarEdgeSmooth", matPolarEdgeSmooth);
 
 	int density = 1;
 
@@ -480,10 +490,36 @@ Mat getTangueMask(Mat matOrg) {
 	Mat mask = Mat::zeros(matResizedOrg.rows, matResizedOrg.cols, CV_8UC1);
 	fillPoly(mask, g_contours3, Scalar(255));
 
-	//imshow("Tangue Mask1", mask);
+	//imshow("Tangue Mask", mask);
 
 	return mask;
 }
+
+
+
+/**
+* @brief Display text information
+
+* @param Mat: img
+* @param string: txt
+* @author Pai Jin
+* @date 2017/9/16
+*/
+void displayText(Mat img, string txt) {
+	cv::Point myPoint;
+	myPoint.x = 100;
+	myPoint.y = 100;
+
+	/// Font Face
+	int myFontFace = 2;
+
+	/// Font Scale
+	double myFontScale = 1.6;
+
+	cv::putText(img, txt, myPoint, myFontFace, myFontScale, Scalar(0, 0, 255));
+}
+
+
 
 /**
 * @brief Skin detection function
@@ -532,7 +568,7 @@ bool skinDetection(const char* filePath) {
 	// get skin mask
 	Mat matSkinMask = getSkinMask(g_tempChannels[1]);
 	if (matSkinMask.data == NULL) {
-		std::cout << "skinDetection() function failed." << std::endl;
+		std::cout << "tongueDetection() function failed." << std::endl;
 		return false;
 	}
 
@@ -581,39 +617,23 @@ bool tongueDetection(const char* filePath) {
 	g_tempContour2.clear();
 
 	/*
-	// resize image
+	/// resize image
 	Mat matResizedOrg;
-	resize(matOrg, matResizedOrg, Size(matOrg.cols / 2, matOrg.rows / 2));
+	resize(matOrg, matOrg, Size(matOrg.cols / 2, matOrg.rows / 2));
 	*/
 
-	// convert original image to HSV image
-	Mat matOrgHSV;
-	cvtColor(matOrg, matOrgHSV, CV_BGR2HSV);
+	Mat matTongueMask;
+	matTongueMask = getTangueMask(matOrg);
 
-	// split image into channels to get Value channel
-	split(matOrgHSV, g_tempChannels);
-
-	// get skin mask
-	Mat matSkinMask = getSkinMask(g_tempChannels[1]);
-	if (matSkinMask.data == NULL) {
-		std::cout << "tongueDetection() function failed." << std::endl;
-		return false;
-	}
-
-	// get skin image
-	Mat matSkin;
-	matOrg.copyTo(matSkin, matSkinMask);
-	//imshow("Skin", matSkin);
-
-	Mat matTangueLipMask = getTangueLipMask(g_tempChannels[0], matSkinMask);
-	Mat matTongueLip;
-	matOrg.copyTo(matTongueLip, matTangueLipMask);
-	//imshow("Tangue and Lip", matTongueLip);
-
-	Mat matTangueMask = getTangueMask(matTongueLip);
 	Mat matTongue;
-	matTongueLip.copyTo(matTongue, matTangueMask);
-	//imshow("Tangue", matTongue);
+	if (matTongueMask.data == NULL) {
+		matTongue = Mat::zeros(matOrg.rows, matOrg.cols, CV_8UC3);
+		displayText(matTongue, "Image not valid.");
+	}
+	else {
+		matOrg.copyTo(matTongue, matTongueMask);
+	}
+	//imshow("matTongue", matTongue);
 
 	std::string fpath1 = filePath;
 	fpath1.replace(fpath1.length() - 4, fpath1.length() - 1, "_tongue.jpg");
