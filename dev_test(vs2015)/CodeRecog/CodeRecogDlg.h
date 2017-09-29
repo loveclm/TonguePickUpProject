@@ -31,4 +31,5 @@ protected:
 
 public:
 	afx_msg void OnDetectTongueUpdatedAlgorithm();
+	BOOL m_bAllFiles;
 };
